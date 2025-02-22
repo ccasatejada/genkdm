@@ -6,6 +6,13 @@ __pycache__/
 # C extensions
 *.so
 
+# files
+files/certificate/*.pem
+files/cpl/*.xml
+files/dkdm/*.xml
+# scripts
+scripts/*.pem
+
 # Distribution / packaging
 .Python
 build/
