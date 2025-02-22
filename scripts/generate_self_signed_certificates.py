@@ -18,6 +18,22 @@ logging.basicConfig(
     format="",
     datefmt='')
 
+"""
+    Main script
+    It permits to generate self signed certificate for the server/device itself.
+    It conforms to SMPTE ST 430-2 documentation:
+        - PEM Cert chain
+        - With sha1 thumbprint encoded with base64 (asn1 compliance) -> see get_certificate_thumbprint.py
+        - all certificates (root>intermediate>server) have the correct extensions
+        - qualifier thumbprint is TBS (To Be Signed)/SubjectPublicKey workaround described by the specification
+        - serial number must not be above u64 (64-bit unsigned integer type)
+        - string must be PRINTABLESTRING and not UTF8STRING -> see parse_pem_certificate.py
+    With the public certificate chain -> it allows DCP (digital cinema package) maker (postprod, labs etc) to make DKDM (master Key delivery message)
+    to our server.
+    With the private key -> we will able to "duplicate" master kdm, make it and signed it to a target certificate, 
+    (the device that will runs DCP (through theatrical management system (TMS) that ingest the newly created kdm)).
+"""
+
 class ScriptException(Exception):
     def __init__(self):
         pass
