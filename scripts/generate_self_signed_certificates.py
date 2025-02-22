@@ -24,25 +24,25 @@ class ScriptException(Exception):
 
 
 def calculate_smpte_thumbprint(cert):
-    """Calcule le thumbprint conforme à SMPTE 430-2 (SHA-1 + Base64)."""
-    # Extraire le SubjectPublicKeyInfo
+    """ Compute thumbprint conform to SMPTE 430-2 (SHA-1 + Base64)."""
+    # Extract SubjectPublicKeyInfo
     spki = crypto.dump_publickey(crypto.FILETYPE_ASN1, cert.get_pubkey())
 
-    # Décoder le SubjectPublicKeyInfo pour obtenir le BIT STRING
+    # Decode SubjectPublicKeyInfo to obtain BIT STRING
     spki_decoded, _ = decoder.decode(spki, asn1Spec=rfc2459.SubjectPublicKeyInfo())
     bit_string = spki_decoded.getComponentByName('subjectPublicKey')
 
-    # Obtenir les octets du BIT STRING en excluant les bits non utilisés
+    # Get BIT STRING's octets and exclude non-used bits
     bit_string_bytes = bit_string.asOctets()
 
-    # Calculer le SHA-1 du BIT STRING
+    # Compute SHA-1 from BIT STRING
     sha1_digest = hashlib.sha1(bit_string_bytes).digest()
 
-    # Encoder en Base64
+    # Encode to Base64
     return base64.b64encode(sha1_digest).decode('ascii')
 
-# Fonction pour créer un certificat
-def create_certificate(subject_name, issuer_name, public_key, private_key, ca=False, path_length=None, key_usage=None, issuer_qualifier=None):
+
+def create_certificate(subject_name, issuer_name, public_key, private_key, ca=False, key_usage=None, issuer_qualifier=None, how_many_years=0):
     cert = crypto.X509()
     cert.set_version(2)
     cert.set_serial_number(int.from_bytes(os.urandom(8), byteorder="big") & (2 ** 64 - 1))
@@ -52,14 +52,13 @@ def create_certificate(subject_name, issuer_name, public_key, private_key, ca=Fa
         cert.get_issuer().__setattr__(c[0].decode('ascii'), c[1].decode('ascii'))
 
     cert.set_pubkey(PKey.from_cryptography_key(public_key))
-    cert.gmtime_adj_notBefore(0)
-    cert.gmtime_adj_notAfter(3650 * 24 * 60 * 60 if ca else 365 * 24 * 60 * 60)
+    cert.gmtime_adj_notBefore(0) # now
+    length = (365 * 24 * 60 * 60) * (how_many_years + 5 if ca else 0)
+    cert.gmtime_adj_notAfter(length)
 
     # Extensions
     if ca:
         basic_constraints = "CA:TRUE"
-        if path_length is not None:
-            basic_constraints += ", pathlen:%d" % path_length
     else:
         basic_constraints = "CA:FALSE"
 
@@ -77,13 +76,15 @@ def create_certificate(subject_name, issuer_name, public_key, private_key, ca=Fa
         crypto.X509Extension(b"subjectKeyIdentifier", False, b"hash", subject=cert),
     ])
 
-    # Ajouter authorityKeyIdentifier
+    # add authorityKeyIdentifier
     cert.add_extensions([
         crypto.X509Extension(b'authorityKeyIdentifier', False, b'keyid:always', issuer=cert)
     ])
 
+    # sign before calculate thumbprint
     cert.sign(private_key, 'sha256')
 
+    # add qualifier thumbprint to make it works with smpte 430-2 documentation
     dn_qualifier = calculate_smpte_thumbprint(cert)
     cert.get_subject().__setattr__('dnQualifier', dn_qualifier)
 
@@ -95,80 +96,86 @@ def create_certificate(subject_name, issuer_name, public_key, private_key, ca=Fa
 
     return cert, dn_qualifier
 
-# Fonction pour générer une clé RSA
 def generate_rsa_key():
     key = crypto.PKey()
     key.generate_key(crypto.TYPE_RSA, 2048)
     return key
 
-# Fonction pour créer un X509 Name avec des PrintableString
 def create_x509_name(common_name, organization):
     name = crypto.X509Name(crypto.X509().get_subject())
     name.__setattr__("CN", value=common_name.decode('ascii'))
     name.__setattr__("O", value=organization.decode('ascii'))
     return name
 
-# Générer la clé privée pour le certificat racine
-private_key_root = generate_rsa_key()
-public_key_root = private_key_root.to_cryptography_key().public_key()
 
-root_subject = create_x509_name(b"RootCA", b"RootOrganization")
+def generate_certificate(year_input):
+    check_already_existing_files()
+    # Root
+    private_key_root = generate_rsa_key()
+    public_key_root = private_key_root.to_cryptography_key().public_key()
+    root_subject = create_x509_name(b"RootCA", b"RootOrganization")
+    certificate_root, dn_qualifier_root = create_certificate(
+        subject_name=root_subject,
+        issuer_name=root_subject,
+        public_key=public_key_root,
+        private_key=private_key_root,
+        ca=True,
+        key_usage={"keyCertSign": True},
+        how_many_years=year_input
+    )
 
-certificate_root, dn_qualifier_root = create_certificate(
-    subject_name=root_subject,
-    issuer_name=root_subject,
-    public_key=public_key_root,
-    private_key=private_key_root,
-    ca=True,
-    key_usage={"keyCertSign": True}
-)
+    # Intermediate
+    private_key_intermediate = generate_rsa_key()
+    public_key_intermediate = private_key_intermediate.to_cryptography_key().public_key()
+    intermediate_subject = create_x509_name(b"IntermediateCA", b"IntermediateOrganization")
+    certificate_intermediate, dn_qualifier_intermediate = create_certificate(
+        subject_name=intermediate_subject,
+        issuer_name=root_subject,
+        public_key=public_key_intermediate,
+        private_key=private_key_root,
+        ca=True,
+        key_usage={"keyCertSign": True, "cRLSign": True},
+        issuer_qualifier=dn_qualifier_root,
+        how_many_years=year_input
+    )
 
-# Générer la clé privée pour le certificat intermédiaire
-private_key_intermediate = generate_rsa_key()
-public_key_intermediate = private_key_intermediate.to_cryptography_key().public_key()
+    # Leaf/Device/Server certificate
+    private_key_server = generate_rsa_key()
+    public_key_server = private_key_server.to_cryptography_key().public_key()
+    server_subject = create_x509_name(b"ServerCert", b"ServerOrganization")
+    certificate_server, dn_qualifier_server = create_certificate(
+        subject_name=server_subject,
+        issuer_name=intermediate_subject,
+        public_key=public_key_server,
+        private_key=private_key_intermediate,
+        ca=False,
+        key_usage={"digitalSignature": True, "keyEncipherment": True, "dataEncipherment": True},
+        issuer_qualifier=dn_qualifier_intermediate,
+        how_many_years=year_input
+    )
 
-intermediate_subject = create_x509_name(b"IntermediateCA", b"IntermediateOrganization")
+    # Save them
+    with open("../files/self/self_certificates_chain.pem", "wb") as f:
+        f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, certificate_root))
+        f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, certificate_intermediate))
+        f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, certificate_server))
+    with open("../files/self/self_server_key.pem", "wb") as f:
+        f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, private_key_server))
+    log.info("Certificate chain and private key generated with success.")
 
-certificate_intermediate, dn_qualifier_intermediate = create_certificate(
-    subject_name=intermediate_subject,
-    issuer_name=root_subject,
-    public_key=public_key_intermediate,
-    private_key=private_key_root,
-    ca=True,
-    key_usage={"keyCertSign": True, "cRLSign": True},
-    issuer_qualifier=dn_qualifier_root
-)
 
-# Générer la clé privée pour le certificat serveur
-private_key_server = generate_rsa_key()
-public_key_server = private_key_server.to_cryptography_key().public_key()
-
-server_subject = create_x509_name(b"ServerCert", b"ServerOrganization")
-
-certificate_server, dn_qualifier_server = create_certificate(
-    subject_name=server_subject,
-    issuer_name=intermediate_subject,
-    public_key=public_key_server,
-    private_key=private_key_intermediate,
-    ca=False,
-    key_usage={"digitalSignature": True, "keyEncipherment": True, "dataEncipherment": True},
-    issuer_qualifier=dn_qualifier_intermediate
-)
-
-# Sauvegarde des certificats et clés
-with open("cert_chain.pem", "wb") as f:
-    f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, certificate_root))
-    f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, certificate_intermediate))
-    f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, certificate_server))
-
-with open("server_key.pem", "wb") as f:
-    f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, private_key_server))
-
-print("Chaîne de certificats et clé privée générées avec succès.")
+def check_already_existing_files():
+    private_key_already_exist = os.path.isfile('../files/self/self_server_key.pem')
+    cert_already_exist = os.path.isfile('../files/self/self_certificates_chain.pem')
+    if private_key_already_exist or cert_already_exist:
+        log.error('Error : files already exists, '
+                  'you need to delete them before regenerate (Certificate = {} / PrivateKey = {})'.format(
+            'exists' if cert_already_exist else 'not exists',
+            'exists' if private_key_already_exist else 'not exists'))
+        raise ScriptException()
 
 
 PARAMETER_ERROR = 'parameter --year (-y) is mandatory - i.e. --year=10 or -y 10'
-
 if __name__ == '__main__':
     arguments = sys.argv[1:]
 
@@ -184,14 +191,16 @@ if __name__ == '__main__':
             key_and_value = one_opt.split(' ')
 
         if key_and_value is None or len(key_and_value) != 2:
-            log.info(PARAMETER_ERROR)
+            log.error(PARAMETER_ERROR)
             raise ScriptException()
 
         try:
             year_length = int(key_and_value[1])
         except ValueError as e:
-            log.info(e)
-            raise ScriptException
+            log.error(e)
+            raise ScriptException()
 
-    print(arguments)
-    log.info('Fin du programme')
+        try:
+            generate_certificate(year_length)
+        except ScriptException:
+            pass
