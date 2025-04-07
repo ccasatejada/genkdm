@@ -58,7 +58,7 @@ def calculate_smpte_thumbprint(cert):
     return base64.b64encode(sha1_digest).decode('ascii')
 
 
-def create_certificate(subject_name, issuer_name, public_key, private_key, ca=False, key_usage=None, issuer_qualifier=None, how_many_years=0):
+def create_certificate(subject_name, issuer_name, public_key, private_key, not_after, ca=False, key_usage=None, issuer_qualifier=None):
     cert = crypto.X509()
     cert.set_version(2)
     cert.set_serial_number(int.from_bytes(os.urandom(8), byteorder="big") & (2 ** 64 - 1))
@@ -69,8 +69,7 @@ def create_certificate(subject_name, issuer_name, public_key, private_key, ca=Fa
 
     cert.set_pubkey(PKey.from_cryptography_key(public_key))
     cert.gmtime_adj_notBefore(0) # now
-    length = (365 * 24 * 60 * 60) * (how_many_years + 5 if ca else 0)
-    cert.gmtime_adj_notAfter(length)
+    cert.gmtime_adj_notAfter(not_after)
 
     # Extensions
     if ca:
@@ -124,8 +123,13 @@ def create_x509_name(common_name, organization):
     return name
 
 
-def generate_certificate(year_input):
+def generate_certificate(nb_year):
     check_already_existing_files()
+
+    years = (365 * nb_year)
+    not_after_ca = (years + 365) * 24 * 60 * 60
+    not_after = years * 24 * 60 * 60
+
     # Root
     private_key_root = generate_rsa_key()
     public_key_root = private_key_root.to_cryptography_key().public_key()
@@ -135,9 +139,9 @@ def generate_certificate(year_input):
         issuer_name=root_subject,
         public_key=public_key_root,
         private_key=private_key_root,
+        not_after=not_after_ca,
         ca=True,
         key_usage={"keyCertSign": True},
-        how_many_years=year_input
     )
 
     # Intermediate
@@ -149,10 +153,10 @@ def generate_certificate(year_input):
         issuer_name=root_subject,
         public_key=public_key_intermediate,
         private_key=private_key_root,
+        not_after=not_after_ca,
         ca=True,
         key_usage={"keyCertSign": True, "cRLSign": True},
         issuer_qualifier=dn_qualifier_root,
-        how_many_years=year_input
     )
 
     # Leaf/Device/Server certificate
@@ -164,10 +168,10 @@ def generate_certificate(year_input):
         issuer_name=intermediate_subject,
         public_key=public_key_server,
         private_key=private_key_intermediate,
+        not_after=not_after,
         ca=False,
         key_usage={"digitalSignature": True, "keyEncipherment": True, "dataEncipherment": True},
-        issuer_qualifier=dn_qualifier_intermediate,
-        how_many_years=year_input
+        issuer_qualifier=dn_qualifier_intermediate
     )
 
     # Save them
