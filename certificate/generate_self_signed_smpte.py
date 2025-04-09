@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509 import UnrecognizedExtension
 from cryptography.x509.name import _ASN1Type
 from cryptography.x509.oid import NameOID, ObjectIdentifier
 from pyasn1.codec.der import decoder
@@ -69,14 +70,13 @@ def smpte_thumbprint(pubkey):
     # Encode to Base64
     return base64.b64encode(sha1_digest).decode('ascii')
 
-def printable_dn(cn, org, dn_qualifier=None):
+def printable_dn(cn, org, dn_qualifier):
     attrs = [
         x509.NameAttribute(NameOID.COMMON_NAME, cn, _type=_ASN1Type.PrintableString),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, org, _type=_ASN1Type.PrintableString),
         x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, org, _type=_ASN1Type.PrintableString),
+        x509.NameAttribute(NameOID.DN_QUALIFIER, dn_qualifier, _type=_ASN1Type.PrintableString)
     ]
-    if dn_qualifier:
-        attrs.append(x509.NameAttribute(NameOID.DN_QUALIFIER, dn_qualifier))
     return x509.Name(attrs)
 
 def build_cert(subject, issuer, pubkey, issuer_key, is_ca, validity_days, role, issuer_aki=None, length=None):
@@ -87,11 +87,11 @@ def build_cert(subject, issuer, pubkey, issuer_key, is_ca, validity_days, role, 
         .issuer_name(issuer)
         .public_key(pubkey)
         .serial_number(x509.random_serial_number() & (2**64 - 1))  # SMPTE: must fit in uint64
-        .not_valid_before(now)
+        .not_valid_before(now - timedelta(days=1))
         .not_valid_after(now + timedelta(days=validity_days))
         .add_extension(x509.BasicConstraints(ca=is_ca, path_length=length), critical=True)
         .add_extension(x509.KeyUsage(
-            digital_signature=False,
+            digital_signature=not is_ca,
             key_encipherment=not is_ca,
             content_commitment=False,
             data_encipherment=not is_ca,
@@ -104,18 +104,32 @@ def build_cert(subject, issuer, pubkey, issuer_key, is_ca, validity_days, role, 
     )
 
     # Authority Key Identifier (from issuer)
-    if issuer_aki:
-        builder = builder.add_extension(
-            x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(issuer_aki),
-            critical=False,
-        )
-
-    # Extension SMPTE: Role
     builder = builder.add_extension(
-        x509.UnrecognizedExtension(OID_ROLE, role.encode("ascii")),
+        x509.AuthorityKeyIdentifier(
+            key_identifier=issuer_aki.digest,
+            authority_cert_issuer=None,
+            authority_cert_serial_number=None),
         critical=False,
     )
+
     builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(pubkey), critical=False)
+    builder = builder.add_extension(
+        UnrecognizedExtension(
+            ObjectIdentifier("1.2.840.10008.3.1.1.1"),
+            b"signer" if is_ca else b"device"
+        ),
+        critical=False
+    )
+    if not is_ca:
+        # Extension SMPTE: Role
+        builder = builder.add_extension(
+            x509.UnrecognizedExtension(OID_ROLE, role.encode("ascii")),
+            critical=False,
+        )
+        builder = builder.add_extension(
+            x509.SubjectAlternativeName([]), critical=False
+        )
+
     return builder.sign(issuer_key, hashes.SHA256())
 
 def write_cert_and_key(path_prefix, cert, key):
@@ -141,7 +155,7 @@ def generate_certs(nb_year):
     # 1. Root
     root_key = gen_key()
     root_thumb = smpte_thumbprint(root_key.public_key())
-    root_dn = printable_dn(".RootCA.MyOrg", ".MyOrganizationSelfSigned", root_thumb)
+    root_dn = printable_dn(".RootCA-KDMGENORG", "KDMGENSelfSigned", root_thumb)
     root_cert = build_cert(
         subject=root_dn,
         issuer=root_dn,
@@ -151,6 +165,7 @@ def generate_certs(nb_year):
         validity_days=years_ca,
         role="ROOT",
         issuer_aki=x509.SubjectKeyIdentifier.from_public_key(root_key.public_key()),
+        # issuer_aki=None,
         length=3
     )
     write_cert_and_key(f"{get_current_path()}/files/tmp/root", root_cert, root_key)
@@ -158,7 +173,7 @@ def generate_certs(nb_year):
     # 2. Intermediate
     inter_key = gen_key()
     inter_thumb = smpte_thumbprint(inter_key.public_key())
-    inter_dn = printable_dn(".SignerCA.MyOrg", ".MyOrganizationSelfSigned", inter_thumb)
+    inter_dn = printable_dn(".SignerCA-KDMGENORG", "KDMGENSelfSigned", inter_thumb)
     inter_cert = build_cert(
         subject=inter_dn,
         issuer=root_cert.subject,
@@ -175,7 +190,7 @@ def generate_certs(nb_year):
     # 3. Server (Leaf)
     leaf_key = gen_key()
     leaf_thumb = smpte_thumbprint(leaf_key.public_key())
-    leaf_dn = printable_dn("CS.SelfDeviceCert.MyOrg", ".MyOrganizationSelfSigned", leaf_thumb)
+    leaf_dn = printable_dn("signer.kdmtool.KDMGENORG", "KDMGENSelfSigned", leaf_thumb)
     leaf_cert = build_cert(
         subject=leaf_dn,
         issuer=inter_cert.subject,
@@ -183,8 +198,8 @@ def generate_certs(nb_year):
         issuer_key=inter_key,
         is_ca=False,
         validity_days=years,
-        role="DEVICE",
-        issuer_aki=inter_cert.extensions.get_extension_for_class(x509.SubjectKeyIdentifier).value
+        role="KDM_GENERATOR",
+        issuer_aki=inter_cert.extensions.get_extension_for_class(x509.SubjectKeyIdentifier).value,
     )
     write_cert_and_key(f"{get_current_path()}/files/tmp/server", leaf_cert, leaf_key)
 

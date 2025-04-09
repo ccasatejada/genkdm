@@ -14,7 +14,7 @@ from cryptography.x509.oid import NameOID, ObjectIdentifier
 from pyasn1.codec.der import decoder
 from pyasn1_modules import rfc2459
 
-from scripts.generate_self_signed_smpte import smpte_thumbprint, printable_dn
+from certificate.generate_self_signed_smpte import smpte_thumbprint, printable_dn
 from utils.utils import get_current_path, verify_chain
 
 # OID pour le rôle selon SMPTE
@@ -79,7 +79,7 @@ def test_role_extension(certs):
     roles_expected = {
         "root": "ROOT",
         "intermediate": "SIGNER",
-        "leaf": "DEVICE",
+        "leaf": "KDM_GENERATOR",
     }
     for name, cert in certs.items():
         ext = cert.extensions.get_extension_for_oid(OID_ROLE)
@@ -117,7 +117,7 @@ def test_serial_number_u64(certs):
 # =====================================================================================================================
 
 
-VALID_ROLES = {"ROOT", "SIGNER", "DEVICE"}
+VALID_ROLES = {"ROOT", "SIGNER", "KDM_GENERATOR"}
 
 def get_cert_chain_from_pem(pem_path):
     with open(pem_path, "rb") as f:
@@ -231,7 +231,7 @@ def test_certificate_roles_smpte():
 
     assert get_role_from_cert(root_cert) == "ROOT"
     assert get_role_from_cert(intermediate_cert) == "SIGNER"
-    assert get_role_from_cert(server_cert) == "DEVICE"
+    assert get_role_from_cert(server_cert) == "KDM_GENERATOR"
 
 # ===================================================================================================================
 
@@ -247,7 +247,7 @@ def test_certificate_roles_within_common_name():
 
     assert len(get_common_name_roles(root_cert)) == 0
     assert len(get_common_name_roles(intermediate_cert)) == 0
-    assert "CS" in get_common_name_roles(server_cert)
+    assert "signer" in get_common_name_roles(server_cert)
 
 # ===================================================================================================================
 
@@ -285,7 +285,7 @@ def test_certificate_extensions():
 
     role_extension = cert.extensions.get_extension_for_oid(OID_ROLE)
     assert role_extension is not None
-    assert role_extension.value.value == b"DEVICE"
+    assert role_extension.value.value == b"KDM_GENERATOR"
 
 
 def test_certificate_chain():

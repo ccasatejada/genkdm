@@ -1,0 +1,43 @@
+{
+  "certificates": [
+    {
+      "filename": "full_chain-n3.unchain.pem",
+      "pubkey_tp": "2nNTvjSNfCWahUuZOqaaAo+Tfgk=",
+      "cert_tp": "3DqEMkzMSCY85GmLi0W7tBenKas=",
+      "subject": ".RootCA-KDMGENORG",
+      "subject_qualifier": "\"2nNTvjSNfCWahUuZOqaaAo+Tfgk=\"",
+      "issuer": ".RootCA-KDMGENORG",
+      "issuer_qualifier": "\"2nNTvjSNfCWahUuZOqaaAo+Tfgk=\"",
+      "cert_type": "root",
+      "serial_number": "5CE68CC12941349C",
+      "not_before": "2025-04-08 22:05",
+      "not_after": "2029-04-08 22:05"
+    },
+    {
+      "filename": "full_chain-n2.unchain.pem",
+      "pubkey_tp": "XJ2u6PbAxKOwbSYvVXSOOpsWH/k=",
+      "cert_tp": "WK1rx+WNEKVZZHi4X72z25Q1qJM=",
+      "subject": ".SignerCA-KDMGENORG",
+      "subject_qualifier": "XJ2u6PbAxKOwbSYvVXSOOpsWH/k=",
+      "issuer": ".RootCA-KDMGENORG",
+      "issuer_qualifier": "\"2nNTvjSNfCWahUuZOqaaAo+Tfgk=\"",
+      "cert_type": "signer",
+      "serial_number": "E5D62490FBB7C9DD",
+      "not_before": "2025-04-08 22:05",
+      "not_after": "2029-04-08 22:05"
+    },
+    {
+      "filename": "full_chain-n1.unchain.pem",
+      "pubkey_tp": "lw0Rpqt9ZQrs+EekRJz+XdmfG9E=",
+      "cert_tp": "Hnxwpee3UmHpOTIdPKGEiuSAY+4=",
+      "subject": "signer.kdmtool.KDMGENORG",
+      "subject_qualifier": "\"lw0Rpqt9ZQrs+EekRJz+XdmfG9E=\"",
+      "issuer": ".SignerCA-KDMGENORG",
+      "issuer_qualifier": "XJ2u6PbAxKOwbSYvVXSOOpsWH/k=",
+      "cert_type": "device",
+      "serial_number": "15D838717DAD3583",
+      "not_before": "2025-04-08 22:05",
+      "not_after": "2028-04-08 22:05"
+    }
+  ]
+}
