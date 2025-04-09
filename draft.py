@@ -15,7 +15,7 @@ key_recipient = RSA.generate(2048)
 
 # Informations sur le KDM
 composition_playlist_id = '{}{}'.format(uuid_prefix, 'ccf2633d-cc6a-4deb-b450-23c1524f042c')
-content_title_text = "Pachamama_FTR-1_F_FR-XX_FR_51-VI_2K_FOLI_20181113_HVY_IOP_OV"
+content_title_text = "any_dkdm_file"
 content_keys_not_valid_before = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat() + "Z"
 content_keys_not_valid_after = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat() + "Z"
 
