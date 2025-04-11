@@ -46,8 +46,14 @@ class ScriptException(Exception):
     def __init__(self):
         pass
 
-# SMPTE-specific OID for role (example): 1.2.840.10070.8.1
-OID_ROLE = ObjectIdentifier("1.2.840.10070.8.1")
+
+def get_oid_device_role():
+    # SMPTE-specific OID for role for device
+    return ObjectIdentifier("1.2.840.10070.8.1")
+
+def get_oid_role():
+    # SMPTE-specific OID role for every certs
+    return ObjectIdentifier("1.2.840.10008.3.1.1.1")
 
 def gen_key():
     return rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -115,7 +121,7 @@ def build_cert(subject, issuer, pubkey, issuer_key, is_ca, validity_days, role, 
     builder = builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(pubkey), critical=False)
     builder = builder.add_extension(
         UnrecognizedExtension(
-            ObjectIdentifier("1.2.840.10008.3.1.1.1"),
+            get_oid_role(),
             b"signer" if is_ca else b"device"
         ),
         critical=False
@@ -123,7 +129,7 @@ def build_cert(subject, issuer, pubkey, issuer_key, is_ca, validity_days, role, 
     if not is_ca:
         # Extension SMPTE: Role
         builder = builder.add_extension(
-            x509.UnrecognizedExtension(OID_ROLE, role.encode("ascii")),
+            x509.UnrecognizedExtension(get_oid_device_role(), role.encode("ascii")),
             critical=False,
         )
         builder = builder.add_extension(

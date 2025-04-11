@@ -14,11 +14,8 @@ from cryptography.x509.oid import NameOID, ObjectIdentifier
 from pyasn1.codec.der import decoder
 from pyasn1_modules import rfc2459
 
-from certificate.generate_self_signed_smpte import smpte_thumbprint, printable_dn
+from certificate.generate_self_signed_smpte import smpte_thumbprint, printable_dn, get_oid_role
 from utils.utils import get_current_path, verify_chain
-
-# OID pour le rôle selon SMPTE
-OID_ROLE = ObjectIdentifier("1.2.840.10070.8.1")
 
 @pytest.fixture(scope="module")
 def certs():
@@ -77,12 +74,12 @@ def test_thumbprint_is_subject_public_key(certs):
 
 def test_role_extension(certs):
     roles_expected = {
-        "root": "ROOT",
-        "intermediate": "SIGNER",
-        "leaf": "KDM_GENERATOR",
+        "root": "signer",
+        "intermediate": "signer",
+        "leaf": "device",
     }
     for name, cert in certs.items():
-        ext = cert.extensions.get_extension_for_oid(OID_ROLE)
+        ext = cert.extensions.get_extension_for_oid(get_oid_role())
         role = ext.value.value.decode()
         assert role == roles_expected[name], f"{name}: rôle attendu {roles_expected[name]}, trouvé {role}"
 
@@ -117,7 +114,7 @@ def test_serial_number_u64(certs):
 # =====================================================================================================================
 
 
-VALID_ROLES = {"ROOT", "SIGNER", "KDM_GENERATOR"}
+VALID_ROLES = {"ROOT", "signer", "device"}
 
 def get_cert_chain_from_pem(pem_path):
     with open(pem_path, "rb") as f:
@@ -137,9 +134,9 @@ def test_certificate_roles():
 
     for cert in certs:
         try:
-            ext = cert.extensions.get_extension_for_oid(OID_ROLE)
+            ext = cert.extensions.get_extension_for_oid(get_oid_role())
         except x509.ExtensionNotFound:
-            pytest.fail(f"Certificat sans extension rôle SMPTE (OID {OID_ROLE.dotted_string}) : {cert.subject}")
+            pytest.fail(f"Certificat sans extension rôle SMPTE (OID {get_oid_role().dotted_string}) : {cert.subject}")
 
         role_raw = ext.value.value  # bytes
         try:
@@ -220,7 +217,7 @@ def test_serial_number():
 
 def get_role_from_cert(cert):
     for ext in cert.extensions:
-        if ext.oid == OID_ROLE:
+        if ext.oid == get_oid_role():
             return ext.value.value.decode('ascii')
     return None
 
@@ -229,9 +226,9 @@ def test_certificate_roles_smpte():
     intermediate_cert = load_cert(INTERMEDIATE_CERT_PATH)
     server_cert = load_cert(SERVER_CERT_PATH)
 
-    assert get_role_from_cert(root_cert) == "ROOT"
-    assert get_role_from_cert(intermediate_cert) == "SIGNER"
-    assert get_role_from_cert(server_cert) == "KDM_GENERATOR"
+    assert get_role_from_cert(root_cert) == "signer"
+    assert get_role_from_cert(intermediate_cert) == "signer"
+    assert get_role_from_cert(server_cert) == "device"
 
 # ===================================================================================================================
 
@@ -283,9 +280,9 @@ def test_certificate_extensions():
     assert basic_constraints is not None
     assert basic_constraints.value.ca is False
 
-    role_extension = cert.extensions.get_extension_for_oid(OID_ROLE)
+    role_extension = cert.extensions.get_extension_for_oid(get_oid_role())
     assert role_extension is not None
-    assert role_extension.value.value == b"KDM_GENERATOR"
+    assert role_extension.value.value == b"device"
 
 
 def test_certificate_chain():
