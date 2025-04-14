@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DCinemaSecurityMessage xmlns="http://www.smpte-ra.org/schemas/430-1/2006/DS">
+  <AuthenticatedPublic xmlns="http://www.smpte-ra.org/schemas/430-1/2006/AKDM">
+    <MessageId>9b117848-762a-4279-9b94-f6d12ad73833</MessageId>
+    <MessageType>http://www.smpte-ra.org/schemas/430-1/2006/KDM#</MessageType>
+    <CompositionPlaylistId>urn:uuid:de1058f8-6db8-49c2-9259-87c35e313490</CompositionPlaylistId>
+    <ContentTitleText>Re-KDM from DKDM</ContentTitleText>
+    <ContentKeysNotValidBefore>2025-04-14T15:44:43.269248Z</ContentKeysNotValidBefore>
+    <ContentKeysNotValidAfter>2025-04-16T15:44:43.269248Z</ContentKeysNotValidAfter>
+    <Signer>
+      <X509SubjectName>2.5.4.46=Ro2W1phAP5AoPq5T5sjfQGjsNa0=,CN=.dcpomatic.smpte-430-2.ROOT,OU=dcpomatic.com,O=dcpomatic.com</X509SubjectName>
+      <X509IssuerName>2.5.4.46=Ro2W1phAP5AoPq5T5sjfQGjsNa0=,CN=.dcpomatic.smpte-430-2.ROOT,OU=dcpomatic.com,O=dcpomatic.com</X509IssuerName>
+      <X509SerialNumber>5</X509SerialNumber>
+    </Signer>
+    <Recipient>
+      <X509SubjectName>2.5.4.46=Ro2W1phAP5AoPq5T5sjfQGjsNa0=,CN=.dcpomatic.smpte-430-2.ROOT,OU=dcpomatic.com,O=dcpomatic.com</X509SubjectName>
+      <X509IssuerName>2.5.4.46=Ro2W1phAP5AoPq5T5sjfQGjsNa0=,CN=.dcpomatic.smpte-430-2.ROOT,OU=dcpomatic.com,O=dcpomatic.com</X509IssuerName>
+      <X509SerialNumber>5</X509SerialNumber>
+    </Recipient>
+    <EncryptedTrackFile>
+      <Id>531d33c5-35b0-4cdd-a507-18eddc4dbeee</Id>
+      <KeyId>urn:uuid:23f2b2bb-46dc-4550-8e10-79c7a9b69e84</KeyId>
+      <CipherData>
+        <CipherValue>fAoOjvWCX3ke35M4ACPgGlL9VpS1d0ARCH1YAaqe/6Ce7gSQdZOdp8xct0/aWUK+HOXjWfmW1ofNmU3mWcq4EFubseFCqb0DmvGqnURPqq/wxIzL0IAn9tnbk2+F1+7zntgu3lVxH7Wc7fU8CVVWsMYguKScUcOlALe/Dvg9iihUpLZdtQRb+NCTckrrJbLObaDxGdmGhOxOhER3aGlwn4rHYygm3IfY/JSw9+pAZ8E7aUnbjNL37JPoLYeBzxhIJzzV632Em38qtYAtLoUD0n+5P3CZOQ2c2STWo5BUofdCLl+nL3m6WZzKeOkfzGOHHIMIK9UshYvpAaY60sn99Q==</CipherValue>
+      </CipherData>
+    </EncryptedTrackFile>
+  </AuthenticatedPublic>
+</DCinemaSecurityMessage>
