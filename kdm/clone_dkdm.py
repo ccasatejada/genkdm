@@ -13,7 +13,7 @@ from cryptography.hazmat.backends import default_backend
 from utils.utils import get_current_path
 
 # === CONFIGURATION ===
-dkdm_path = Path(f"{get_current_path()}/files/dkdm/anydkdm.xml)
+dkdm_path = Path(f"{get_current_path()}/files/dkdm/anydkdm.xml")
 self_private_key_path = Path(f"{get_current_path()}/files/tmp/server_key.pem")
 self_cert_chain_path = Path(f"{get_current_path()}/files/self/full_chain.pem")
 target_cert_chain_path = Path(f"{get_current_path()}/files/certificate/certificate_chain.pem")
