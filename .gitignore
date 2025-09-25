@@ -10,7 +10,7 @@ __pycache__/
 files/certificate/*.pem
 files/cpl/*.xml
 files/dkdm/*.xml
-
+files/docs/*.pdf
 
 # scripts
 scripts/*.pem
@@ -178,3 +178,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+*.pdf
+*.md
+!README.md
