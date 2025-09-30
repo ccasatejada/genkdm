@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import locale
-import logging
 import os
 import sys
 from datetime import datetime, timedelta
@@ -15,6 +14,7 @@ from cryptography.x509.oid import NameOID, ObjectIdentifier
 from pyasn1.codec.der import decoder
 from pyasn1_modules import rfc2459
 
+from utils.logger import get_logger
 from utils.utils import get_current_path
 
 """
@@ -36,11 +36,7 @@ from utils.utils import get_current_path
 os.environ['LC_ALL'] = 'C'
 locale.setlocale(locale.LC_ALL, 'C')
 
-log = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="",
-    datefmt='')
+log = get_logger()
 
 class ScriptException(Exception):
     def __init__(self):

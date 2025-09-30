@@ -1,13 +1,13 @@
 import base64
 import uuid
-from datetime import timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.primitives.serialization import load_pem_private_key, Encoding
 from lxml import etree
 
 from utils.utils import get_current_path
@@ -20,7 +20,8 @@ class KDMGenerator:
         self.output_dir = Path(f"{get_current_path()}/files/output")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def extract_dkdm_info(self, dkdm_path):
+    @staticmethod
+    def extract_dkdm_info(dkdm_path):
         with open(dkdm_path, "rb") as f:
             tree = etree.parse(f)
             root = tree.getroot()
@@ -64,6 +65,15 @@ class KDMGenerator:
         return base64.b64encode(encrypted_key).decode()
 
     @staticmethod
+    def get_certificate_thumbprint(cert):
+        """Generate SHA-1 thumbprint of certificate for SMPTE compliance."""
+        cert_der = cert.public_bytes(encoding=Encoding.DER)
+        digest = hashes.Hash(hashes.SHA1(), backend=default_backend())
+        digest.update(cert_der)
+        thumbprint_bytes = digest.finalize()
+        return base64.b64encode(thumbprint_bytes).decode()
+
+    @staticmethod
     def format_datetime_utc(dt, tz):
         if tz:
             dt = dt.replace(tzinfo=tz).astimezone(timezone.utc)
@@ -74,46 +84,71 @@ class KDMGenerator:
 
         valid_from = self.format_datetime_utc(start_datetime, target_timezone)
         valid_until = self.format_datetime_utc(end_datetime, target_timezone)
+        issue_date = self.format_datetime_utc(datetime.now(timezone.utc), None)
 
         encrypted_key_b64 = self.encrypt_key_for_target(content_key, target_cert)
 
+        # Generate certificate thumbprint for AuthorizedDeviceInfo
+        cert_thumbprint = self.get_certificate_thumbprint(target_cert)
+
         kdm_xml = (
             f"""<?xml version="1.0" encoding="UTF-8"?>
-                <DCinemaSecurityMessage xmlns="http://www.smpte-ra.org/schemas/430-1/2006/DS">
-                  <AuthenticatedPublic xmlns="http://www.smpte-ra.org/schemas/430-1/2006/AKDM">
-                    <MessageId>{str(uuid.uuid4())}</MessageId>
-                    <MessageType>http://www.smpte-ra.org/schemas/430-1/2006/KDM#</MessageType>
-                    <CompositionPlaylistId>{cpl_id}</CompositionPlaylistId>
-                    <ContentTitleText>{content_title}</ContentTitleText>
-                    <ContentKeysNotValidBefore>{valid_from}</ContentKeysNotValidBefore>
-                    <ContentKeysNotValidAfter>{valid_until}</ContentKeysNotValidAfter>
-                    <Signer>
-                      <X509SubjectName>{target_cert.subject.rfc4514_string()}</X509SubjectName>
-                      <X509IssuerName>{target_cert.issuer.rfc4514_string()}</X509IssuerName>
-                      <X509SerialNumber>{target_cert.serial_number}</X509SerialNumber>
-                    </Signer>
-                    <Recipient>
-                      <X509SubjectName>{target_cert.subject.rfc4514_string()}</X509SubjectName>
-                      <X509IssuerName>{target_cert.issuer.rfc4514_string()}</X509IssuerName>
-                      <X509SerialNumber>{target_cert.serial_number}</X509SerialNumber>
-                    </Recipient>
-                    <ContentKeys>
-                      <KeyIdList>
-                        <TypedKeyId>
-                          <KeyId>{key_id}</KeyId>
-                          <KeyType>INGEST</KeyType>
-                        </TypedKeyId>
-                      </KeyIdList>
-                    </ContentKeys>
-                    <EncryptedTrackFile>
-                      <Id>{str(uuid.uuid4())}</Id>
-                      <KeyId>{key_id}</KeyId>
-                      <CipherData>
-                        <CipherValue>{encrypted_key_b64}</CipherValue>
-                      </CipherData>
-                    </EncryptedTrackFile>
-                  </AuthenticatedPublic>
-                </DCinemaSecurityMessage>"""
+<DCinemaSecurityMessage xmlns="http://www.smpte-ra.org/schemas/430-3/2006/ETM" xmlns:kdm="http://www.smpte-ra.org/schemas/430-1/2006/KDM" xmlns:dsig="http://www.w3.org/2000/09/xmldsig#" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
+  <AuthenticatedPublic Id="ID_AuthenticatedPublic">
+    <MessageId>urn:uuid:{str(uuid.uuid4())}</MessageId>
+    <MessageType>http://www.smpte-ra.org/430-1/2006/KDM#kdm-key-type</MessageType>
+    <AnnotationText>{content_title} KDM</AnnotationText>
+    <IssueDate>{issue_date}</IssueDate>
+    <Signer>
+      <dsig:X509IssuerName>{target_cert.issuer.rfc4514_string()}</dsig:X509IssuerName>
+      <dsig:X509SerialNumber>{target_cert.serial_number}</dsig:X509SerialNumber>
+    </Signer>
+    <RequiredExtensions>
+      <KDMRequiredExtensions xmlns="http://www.smpte-ra.org/schemas/430-1/2006/KDM">
+        <Recipient>
+          <X509IssuerSerial>
+            <dsig:X509IssuerName>{target_cert.issuer.rfc4514_string()}</dsig:X509IssuerName>
+            <dsig:X509SerialNumber>{target_cert.serial_number}</dsig:X509SerialNumber>
+          </X509IssuerSerial>
+          <X509SubjectName>{target_cert.subject.rfc4514_string()}</X509SubjectName>
+        </Recipient>
+        <CompositionPlaylistId>{cpl_id}</CompositionPlaylistId>
+        <ContentTitleText>{content_title}</ContentTitleText>
+        <ContentKeysNotValidBefore>{valid_from}</ContentKeysNotValidBefore>
+        <ContentKeysNotValidAfter>{valid_until}</ContentKeysNotValidAfter>
+        <AuthorizedDeviceInfo>
+          <DeviceListIdentifier>urn:uuid:{str(uuid.uuid4())}</DeviceListIdentifier>
+          <DeviceListDescription>Authorized devices for {content_title}</DeviceListDescription>
+          <DeviceList>
+            <CertificateThumbprint>{cert_thumbprint}</CertificateThumbprint>
+          </DeviceList>
+        </AuthorizedDeviceInfo>
+        <KeyIdList>
+          <TypedKeyId>
+            <KeyType scope="http://www.smpte-ra.org/430-1/2006/KDM#kdm-key-type">MDIK</KeyType>
+            <KeyId>{key_id}</KeyId>
+          </TypedKeyId>
+        </KeyIdList>
+      </KDMRequiredExtensions>
+    </RequiredExtensions>
+  </AuthenticatedPublic>
+  <AuthenticatedPrivate>
+    <EncryptedKey Id="ID_EncryptedKey">
+      <enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p"/>
+      <dsig:KeyInfo>
+        <dsig:X509Data>
+          <dsig:X509IssuerSerial>
+            <dsig:X509IssuerName>{target_cert.issuer.rfc4514_string()}</dsig:X509IssuerName>
+            <dsig:X509SerialNumber>{target_cert.serial_number}</dsig:X509SerialNumber>
+          </dsig:X509IssuerSerial>
+        </dsig:X509Data>
+      </dsig:KeyInfo>
+      <enc:CipherData>
+        <enc:CipherValue>{encrypted_key_b64}</enc:CipherValue>
+      </enc:CipherData>
+    </EncryptedKey>
+  </AuthenticatedPrivate>
+</DCinemaSecurityMessage>"""
         )
         return kdm_xml
 

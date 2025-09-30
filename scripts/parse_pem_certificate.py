@@ -1,13 +1,10 @@
 import argparse
 import subprocess
-import logging
 import sys
 
-log = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="",
-    datefmt='')
+from utils.logger import get_logger
+
+log = get_logger()
 
 """
     Utility script to check asn1 certificate informations
@@ -15,6 +12,7 @@ logging.basicConfig(
     python get_certificate_thumbprint.py {path_to_pem_certificate}
     return -> certificate asn1 informations
 """
+
 
 def parse_certificate(cert_file):
     try:

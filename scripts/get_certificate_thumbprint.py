@@ -2,13 +2,10 @@ import argparse
 import shlex
 import subprocess
 import sys
-import logging
 
-log = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="",
-    datefmt='')
+from utils.logger import get_logger
+
+log = get_logger()
 
 """
     Utility script to check asn1 certificate thumbprint

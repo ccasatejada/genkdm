@@ -134,6 +134,25 @@ class TestKDMGenerator:
 
         assert decrypted == test_content_key
 
+    def test_get_certificate_thumbprint(self):
+        # Create a mock certificate with DER encoding
+        mock_cert = Mock()
+        test_der_data = b"test_certificate_der_data"
+        mock_cert.public_bytes.return_value = test_der_data
+
+        # Calculate expected thumbprint (SHA-1 hash of DER data, base64 encoded)
+        import hashlib
+        expected_hash = hashlib.sha1(test_der_data).digest()
+        expected_thumbprint = base64.b64encode(expected_hash).decode()
+
+        # Test the actual method (can't mock enum members)
+        thumbprint = KDMGenerator.get_certificate_thumbprint(mock_cert)
+
+        # Verify that public_bytes was called with DER encoding
+        from cryptography.hazmat.primitives.serialization import Encoding
+        mock_cert.public_bytes.assert_called_once_with(encoding=Encoding.DER)
+        assert thumbprint == expected_thumbprint
+
     def test_format_datetime_utc_no_timezone(self):
         dt = datetime(2024, 11, 4, 10, 0, 0)
         result = KDMGenerator.format_datetime_utc(dt, None)
@@ -153,14 +172,16 @@ class TestKDMGenerator:
         mock_cert.serial_number = 12345
 
         test_content_key = b"test_content_key_16b"
-        key_id = "test-key-id"
-        cpl_id = "test-cpl-id"
+        key_id = "urn:uuid:test-key-id"  # Use proper UUID format
+        cpl_id = "urn:uuid:test-cpl-id"  # Use proper UUID format
         start_dt = datetime(2024, 11, 4, 10, 0, 0)
         end_dt = datetime(2024, 11, 6, 23, 59, 59)
         title = "Test Content"
 
-        with patch.object(self.kdm_gen, 'encrypt_key_for_target') as mock_encrypt:
+        with patch.object(self.kdm_gen, 'encrypt_key_for_target') as mock_encrypt, \
+             patch.object(self.kdm_gen, 'get_certificate_thumbprint') as mock_thumbprint:
             mock_encrypt.return_value = "encrypted_key_b64"
+            mock_thumbprint.return_value = "test_thumbprint"
 
             kdm_xml = self.kdm_gen.build_kdm_xml(
                 test_content_key, key_id, cpl_id, mock_cert,
@@ -170,10 +191,19 @@ class TestKDMGenerator:
         # Parse and verify XML structure
         root = etree.fromstring(kdm_xml.encode('utf-8'))
         assert root.tag.endswith("DCinemaSecurityMessage")
-        assert root.findtext(".//{*}CompositionPlaylistId") == cpl_id
-        assert root.findtext(".//{*}ContentTitleText") == title
-        assert root.findtext(".//{*}KeyId") == key_id
-        assert root.findtext(".//{*}CipherValue") == "encrypted_key_b64"
+
+        # Check SMPTE-compliant namespace
+        assert root.nsmap[None] == "http://www.smpte-ra.org/schemas/430-3/2006/ETM"
+
+        # Check KDM content in proper namespace
+        kdm_ns = "{http://www.smpte-ra.org/schemas/430-1/2006/KDM}"
+        assert root.findtext(f".//{kdm_ns}CompositionPlaylistId") == cpl_id
+        assert root.findtext(f".//{kdm_ns}ContentTitleText") == title
+        assert root.findtext(f".//{kdm_ns}KeyId") == key_id
+
+        # Check encrypted content
+        enc_ns = "{http://www.w3.org/2001/04/xmlenc#}"
+        assert root.findtext(f".//{enc_ns}CipherValue") == "encrypted_key_b64"
 
     def test_save_unsigned_kdm(self):
         test_xml = "<test>xml</test>"

@@ -147,10 +147,10 @@ class TestKDMIntegration:
         xsd_content = (
             """<?xml version="1.0" encoding="UTF-8"?>
                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                          targetNamespace="http://www.smpte-ra.org/schemas/430-1/2006/DS"
-                          xmlns="http://www.smpte-ra.org/schemas/430-1/2006/DS"
+                          targetNamespace="http://www.smpte-ra.org/schemas/430-3/2006/ETM"
+                          xmlns="http://www.smpte-ra.org/schemas/430-3/2006/ETM"
                           elementFormDefault="qualified">
-               
+
                    <xs:element name="DCinemaSecurityMessage">
                        <xs:complexType>
                            <xs:sequence>
@@ -237,12 +237,20 @@ class TestKDMIntegration:
         # Parse and validate KDM structure
         kdm_root = etree.fromstring(kdm_xml.encode('utf-8'))
         assert kdm_root.tag.endswith("DCinemaSecurityMessage")
-        assert kdm_root.findtext(".//{*}CompositionPlaylistId") == cpl_id
-        assert kdm_root.findtext(".//{*}ContentTitleText") == "Integration Test KDM"
-        assert kdm_root.findtext(".//{*}KeyId") == key_id
+
+        # Check SMPTE-compliant namespaces
+        assert kdm_root.nsmap[None] == "http://www.smpte-ra.org/schemas/430-3/2006/ETM"
+
+        # Check KDM content in proper namespaces
+        kdm_ns = "{http://www.smpte-ra.org/schemas/430-1/2006/KDM}"
+        enc_ns = "{http://www.w3.org/2001/04/xmlenc#}"
+
+        assert kdm_root.findtext(f".//{kdm_ns}CompositionPlaylistId") == cpl_id
+        assert kdm_root.findtext(f".//{kdm_ns}ContentTitleText") == "Integration Test KDM"
+        assert kdm_root.findtext(f".//{kdm_ns}KeyId") == key_id
 
         # Verify encrypted key can be decrypted by target
-        cipher_value = kdm_root.findtext(".//{*}CipherValue")
+        cipher_value = kdm_root.findtext(f".//{enc_ns}CipherValue")
         assert cipher_value is not None
 
         encrypted_key_data = base64.b64decode(cipher_value)
@@ -314,8 +322,9 @@ class TestKDMIntegration:
 
             # Verify each KDM has the correct key ID
             kdm_root = etree.fromstring(kdm_xml.encode('utf-8'))
-            assert kdm_root.findtext(".//{*}KeyId") == key_id
-            assert kdm_root.findtext(".//{*}CompositionPlaylistId") == cpl_id
+            kdm_ns = "{http://www.smpte-ra.org/schemas/430-1/2006/KDM}"
+            assert kdm_root.findtext(f".//{kdm_ns}KeyId") == key_id
+            assert kdm_root.findtext(f".//{kdm_ns}CompositionPlaylistId") == cpl_id
 
     @patch('kdm.internal.kdm_generator.get_current_path')
     def test_kdm_generation_error_handling(self, mock_get_path):
@@ -380,8 +389,9 @@ class TestKDMIntegration:
         kdm_root = etree.fromstring(kdm_xml.encode('utf-8'))
 
         # Verify datetime formatting
-        not_valid_before = kdm_root.findtext(".//{*}ContentKeysNotValidBefore")
-        not_valid_after = kdm_root.findtext(".//{*}ContentKeysNotValidAfter")
+        kdm_ns = "{http://www.smpte-ra.org/schemas/430-1/2006/KDM}"
+        not_valid_before = kdm_root.findtext(f".//{kdm_ns}ContentKeysNotValidBefore")
+        not_valid_after = kdm_root.findtext(f".//{kdm_ns}ContentKeysNotValidAfter")
 
         assert not_valid_before == "2024-12-25T14:30:45Z"
         assert not_valid_after == "2024-12-26T23:59:59Z"

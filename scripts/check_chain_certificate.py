@@ -1,14 +1,10 @@
 import subprocess
-import logging
 import sys
 
+from utils.logger import get_logger
 from utils.utils import get_current_path
 
-log = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="",
-    datefmt='')
+log = get_logger()
 
 def main():
     try:
