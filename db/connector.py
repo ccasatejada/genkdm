@@ -14,7 +14,7 @@ from utils.utils import get_current_path
 
 
 # Default database configuration
-DEFAULT_DB_PATH = f"{get_current_path()}/db/kdm_system.sqlite"
+DEFAULT_DB_PATH = f"{get_current_path()}/db/genkdmdb.sql"
 
 # Global database instance (initialized on first use)
 _db_instance = None

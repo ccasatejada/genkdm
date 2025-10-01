@@ -14,15 +14,15 @@ All operations follow SMPTE standards and include validation.
 
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
+from typing import List, Dict, Any, Optional
+
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 from lxml import etree
 
 from db.schema import KDMDatabase, get_database
-from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 
 
 @dataclass
@@ -323,8 +323,8 @@ class KDMDataAccessObject:
             issuer_name=issuer_name,
             serial_number=serial_number,
             thumbprint=thumbprint,
-            not_valid_before=cert_data.not_valid_before,
-            not_valid_after=cert_data.not_valid_after,
+            not_valid_before=cert_data.not_valid_before_utc.replace(tzinfo=None),
+            not_valid_after=cert_data.not_valid_after_utc.replace(tzinfo=None),
             certificate_role="ROOT" if subject_name == issuer_name else "LEAF"
         )
 

@@ -13,14 +13,14 @@ All tables follow SMPTE standards and digital cinema workflows.
 """
 
 import sqlite3
-import json
-from datetime import datetime
-from pathlib import Path
-from typing import Optional, Dict, Any, List
 from contextlib import contextmanager
+from pathlib import Path
+from typing import Optional, Dict, Any
 
+from utils.logger import get_logger
 from utils.utils import get_current_path
 
+log = get_logger()
 
 class KDMDatabase:
     """Database manager for KDM system with comprehensive schema."""
@@ -28,7 +28,7 @@ class KDMDatabase:
     def __init__(self, db_path: Optional[str] = None):
         """Initialize database connection and create schema if needed."""
         if db_path is None:
-            db_path = f"{get_current_path()}/db/kdm_system.sqlite"
+            db_path = f"{get_current_path()}/db/genkdmdb.sql"
 
         self.db_path = db_path
         # Ensure db directory exists
@@ -42,6 +42,7 @@ class KDMDatabase:
         """Context manager for database connections."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row  # Enable dict-like access
+        conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign key constraints
         try:
             yield conn
         finally:
@@ -64,7 +65,7 @@ class KDMDatabase:
             self._create_indexes(cursor)
 
             conn.commit()
-            print("✅ Database schema initialized successfully")
+            log.info("Database schema initialized successfully")
 
     def _create_tenants_table(self, cursor):
         """Create tenants table for organizations/labels."""
@@ -403,37 +404,36 @@ def get_database() -> KDMDatabase:
 def reset_database(db_path: Optional[str] = None) -> KDMDatabase:
     """Reset database by removing file and recreating schema."""
     if db_path is None:
-        db_path = f"{get_current_path()}/db/kdm_system.sqlite"
+        db_path = f"{get_current_path()}/db/genkdmdb.sql"
 
     # Remove existing database
     db_file = Path(db_path)
     if db_file.exists():
         db_file.unlink()
-        print(f"🗑️ Removed existing database: {db_path}")
+        log.info(f"Removed existing database: {db_path}")
 
     # Create new database with schema
     db = KDMDatabase(db_path)
-    print(f"✅ Created new database: {db_path}")
+    log.info(f"Created new database: {db_path}")
     return db
 
 
 if __name__ == "__main__":
     # Example usage
-    print("KDM Database Schema Manager")
-    print("=" * 50)
+    log.info("KDM Database Schema Manager")
 
     # Initialize database
     db = get_database()
 
     # Show schema information
     schema = db.get_schema_info()
-    print(f"Database: {schema['database_path']}")
-    print(f"Total tables: {schema['total_tables']}")
+    log.info(f"Database: {schema['database_path']}")
+    log.info(f"Total tables: {schema['total_tables']}")
 
     for table_name, table_info in schema["tables"].items():
-        print(f"\n📋 Table: {table_name} ({table_info['row_count']} rows)")
+        log.info(f"Table: {table_name} ({table_info['row_count']} rows)")
         for col in table_info["columns"]:
             pk_marker = " [PK]" if col["pk"] else ""
             nullable = "NULL" if col["nullable"] else "NOT NULL"
             default = f" DEFAULT {col['default']}" if col["default"] else ""
-            print(f"  - {col['name']}: {col['type']} {nullable}{default}{pk_marker}")
+            log.info(f"  - {col['name']}: {col['type']} {nullable}{default}{pk_marker}")

@@ -18,19 +18,20 @@ Usage:
 """
 
 import argparse
-import sys
 import json
-from pathlib import Path
+import sys
 from datetime import datetime
-from typing import List
+from pathlib import Path
 
-from db.schema import get_database, reset_database
 from db.dao import get_dao, TenantRecord
+from db.schema import get_database, reset_database
+from utils.logger import get_logger
 
+log = get_logger()
 
 def init_database(args):
     """Initialize database with schema."""
-    print("🔄 Initializing KDM database...")
+    log.info("Initializing KDM database...")
 
     if args.reset:
         db = reset_database()
@@ -38,12 +39,12 @@ def init_database(args):
         db = get_database()
 
     schema_info = db.get_schema_info()
-    print(f"✅ Database initialized: {schema_info['database_path']}")
-    print(f"📊 Total tables: {schema_info['total_tables']}")
+    log.info(f"Database initialized: {schema_info['database_path']}")
+    log.info(f"Total tables: {schema_info['total_tables']}")
 
     # Show table structure
     for table_name, table_info in schema_info["tables"].items():
-        print(f"  📋 {table_name}: {table_info['row_count']} rows")
+        log.info(f"{table_name}: {table_info['row_count']} rows")
 
 
 def add_tenant(args):
@@ -59,9 +60,9 @@ def add_tenant(args):
 
     try:
         tenant_id = dao.create_tenant(tenant)
-        print(f"✅ Added tenant '{args.label}' with ID: {tenant_id}")
+        log.info(f"Added tenant '{args.label}' with ID: {tenant_id}")
     except Exception as e:
-        print(f"❌ Failed to add tenant: {e}")
+        log.info(f"Failed to add tenant: {e}")
         sys.exit(1)
 
 
@@ -71,16 +72,15 @@ def list_tenants(args):
     tenants = dao.list_tenants(active_only=not args.all)
 
     if not tenants:
-        print("📋 No tenants found")
+        log.info("No tenants found")
         return
 
-    print(f"📋 Found {len(tenants)} tenant(s):")
-    print(f"{'ID':<4} {'Label':<20} {'Organization':<30} {'Active':<8}")
-    print("-" * 65)
+    log.info(f"Found {len(tenants)} tenant(s):")
+    log.info(f"{'ID':<4} {'Label':<20} {'Organization':<30} {'Active':<8}")
 
     for tenant in tenants:
         active = "✅" if tenant.is_active else "❌"
-        print(f"{tenant.id:<4} {tenant.label:<20} {tenant.organization:<30} {active:<8}")
+        log.info(f"{tenant.id:<4} {tenant.label:<20} {tenant.organization:<30} {active:<8}")
 
 
 def remove_tenant(args):
@@ -88,9 +88,9 @@ def remove_tenant(args):
     dao = get_dao()
 
     if dao.delete_tenant(args.tenant_id):
-        print(f"✅ Deactivated tenant ID: {args.tenant_id}")
+        log.info(f"Deactivated tenant ID: {args.tenant_id}")
     else:
-        print(f"❌ Failed to deactivate tenant ID: {args.tenant_id}")
+        log.info(f"Failed to deactivate tenant ID: {args.tenant_id}")
         sys.exit(1)
 
 
@@ -99,18 +99,18 @@ def import_certificate(args):
     dao = get_dao()
 
     if not Path(args.cert_path).exists():
-        print(f"❌ Certificate file not found: {args.cert_path}")
+        log.info(f"Certificate file not found: {args.cert_path}")
         sys.exit(1)
 
     if not Path(args.key_path).exists():
-        print(f"❌ Private key file not found: {args.key_path}")
+        log.info(f"Private key file not found: {args.key_path}")
         sys.exit(1)
 
     try:
         cert_id = dao.import_certificate_from_file(args.cert_path, args.key_path, args.name)
-        print(f"✅ Imported certificate '{args.name}' with ID: {cert_id}")
+        log.info(f"Imported certificate '{args.name}' with ID: {cert_id}")
     except Exception as e:
-        print(f"❌ Failed to import certificate: {e}")
+        log.info(f"Failed to import certificate: {e}")
         sys.exit(1)
 
 
@@ -121,18 +121,18 @@ def import_cpl(args):
     # Get tenant
     tenant = dao.get_tenant_by_label(args.tenant_label)
     if not tenant:
-        print(f"❌ Tenant '{args.tenant_label}' not found")
+        log.info(f"Tenant '{args.tenant_label}' not found")
         sys.exit(1)
 
     if not Path(args.cpl_path).exists():
-        print(f"❌ CPL file not found: {args.cpl_path}")
+        log.info(f"CPL file not found: {args.cpl_path}")
         sys.exit(1)
 
     try:
         cpl_id = dao.import_cpl_from_file(tenant.id, args.cpl_path)
-        print(f"✅ Imported CPL with ID: {cpl_id}")
+        log.info(f"Imported CPL with ID: {cpl_id}")
     except Exception as e:
-        print(f"❌ Failed to import CPL: {e}")
+        log.info(f"Failed to import CPL: {e}")
         sys.exit(1)
 
 
@@ -143,28 +143,27 @@ def import_dkdm(args):
     # Get tenant
     tenant = dao.get_tenant_by_label(args.tenant_label)
     if not tenant:
-        print(f"❌ Tenant '{args.tenant_label}' not found")
+        log.info(f"Tenant '{args.tenant_label}' not found")
         sys.exit(1)
 
     if not Path(args.dkdm_path).exists():
-        print(f"❌ DKDM file not found: {args.dkdm_path}")
+        log.info(f"DKDM file not found: {args.dkdm_path}")
         sys.exit(1)
 
     try:
         dkdm_id = dao.import_dkdm_from_file(tenant.id, args.dkdm_path)
-        print(f"✅ Imported DKDM with ID: {dkdm_id}")
+        log.info(f"Imported DKDM with ID: {dkdm_id}")
     except Exception as e:
-        print(f"❌ Failed to import DKDM: {e}")
+        log.info(f"Failed to import DKDM: {e}")
         sys.exit(1)
 
 
-def show_statistics(args):
+def show_statistics():
     """Show database statistics."""
     dao = get_dao()
     stats = dao.get_statistics()
 
-    print("📊 KDM Database Statistics")
-    print("=" * 50)
+    log.info("KDM Database Statistics")
 
     categories = [
         ("Tenants", "tenants"),
@@ -178,7 +177,7 @@ def show_statistics(args):
     for category, table in categories:
         active = stats.get(f'active_{table}', 0)
         total = stats.get(f'total_{table}', 0)
-        print(f"{category:<20}: {active:>3} active / {total:>3} total")
+        log.info(f"{category:<20}: {active:>3} active / {total:>3} total")
 
 
 def bulk_import(args):
@@ -188,7 +187,7 @@ def bulk_import(args):
     # Get tenant
     tenant = dao.get_tenant_by_label(args.tenant_label)
     if not tenant:
-        print(f"❌ Tenant '{args.tenant_label}' not found")
+        log.info(f"Tenant '{args.tenant_label}' not found")
         sys.exit(1)
 
     imported_cpls = 0
@@ -198,33 +197,33 @@ def bulk_import(args):
     if args.cpl_dir:
         cpl_dir = Path(args.cpl_dir)
         if cpl_dir.exists():
-            print(f"🔄 Importing CPLs from {cpl_dir}...")
+            log.info(f"Importing CPLs from {cpl_dir}...")
             for cpl_file in cpl_dir.glob("*.xml"):
                 try:
                     dao.import_cpl_from_file(tenant.id, str(cpl_file))
                     imported_cpls += 1
-                    print(f"  ✅ Imported: {cpl_file.name}")
+                    log.info(f"  Imported: {cpl_file.name}")
                 except Exception as e:
-                    print(f"  ❌ Failed to import {cpl_file.name}: {e}")
+                    log.info(f"  Failed to import {cpl_file.name}: {e}")
         else:
-            print(f"❌ CPL directory not found: {cpl_dir}")
+            log.info(f"❌ CPL directory not found: {cpl_dir}")
 
     # Import DKDMs
     if args.dkdm_dir:
         dkdm_dir = Path(args.dkdm_dir)
         if dkdm_dir.exists():
-            print(f"🔄 Importing DKDMs from {dkdm_dir}...")
+            log.info(f"Importing DKDMs from {dkdm_dir}...")
             for dkdm_file in dkdm_dir.glob("*.xml"):
                 try:
                     dao.import_dkdm_from_file(tenant.id, str(dkdm_file))
                     imported_dkdms += 1
-                    print(f"  ✅ Imported: {dkdm_file.name}")
+                    log.info(f"  Imported: {dkdm_file.name}")
                 except Exception as e:
-                    print(f"  ❌ Failed to import {dkdm_file.name}: {e}")
+                    log.info(f"  Failed to import {dkdm_file.name}: {e}")
         else:
-            print(f"❌ DKDM directory not found: {dkdm_dir}")
+            log.info(f"DKDM directory not found: {dkdm_dir}")
 
-    print(f"📊 Bulk import completed: {imported_cpls} CPLs, {imported_dkdms} DKDMs")
+    log.info(f"Bulk import completed: {imported_cpls} CPLs, {imported_dkdms} DKDMs")
 
 
 def export_data(args):
@@ -240,7 +239,7 @@ def export_data(args):
     with open(args.output_file, 'w') as f:
         json.dump(export_data, f, indent=2, default=str)
 
-    print(f"✅ Database data exported to: {args.output_file}")
+    log.info(f" Database data exported to: {args.output_file}")
 
 
 def main():
@@ -311,6 +310,9 @@ def main():
     if args.command == 'init':
         init_database(args)
     elif args.command == 'tenant':
+        if not hasattr(args, 'tenant_action') or not args.tenant_action:
+            tenant_parser.print_help()
+            sys.exit(1)
         if args.tenant_action == 'add':
             add_tenant(args)
         elif args.tenant_action == 'list':
@@ -328,7 +330,7 @@ def main():
     elif args.command == 'bulk-import':
         bulk_import(args)
     elif args.command == 'stats':
-        show_statistics(args)
+        show_statistics()
     elif args.command == 'export':
         export_data(args)
     else:

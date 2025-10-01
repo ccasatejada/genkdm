@@ -95,7 +95,7 @@ class TestCloneDKDMToKDM:
         mock_sign.return_value = "/test/output/kdm_signed.xml"
 
         # act
-        result = clone_dkdm_to_kdm_signed()
+        result = clone_dkdm_to_kdm_signed(datetime.now(), datetime.now())
 
         # assert
         mock_clone.assert_called_once()
@@ -110,7 +110,10 @@ class TestCloneDKDMToKDM:
         mock_sign.side_effect = Exception("Signing failed")
 
         # act
-        result = clone_dkdm_to_kdm_signed()
+        result = clone_dkdm_to_kdm_signed(
+            datetime.now(),
+            datetime.now()
+        )
 
         # assert
         mock_clone.assert_called_once()
