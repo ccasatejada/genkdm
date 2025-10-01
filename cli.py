@@ -1,11 +1,13 @@
-import typer
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
+
+import typer
 
 from certificate.generate_self_signed_smpte import generate_certs
+from db.schema import get_database, reset_database
+from db.dao import get_dao, TenantRecord
 from kdm.clone_dkdm import clone_dkdm_to_kdm_signed
-from db.schema import KDMDatabase, get_database, reset_database
 from utils.logger import get_logger
 
 app = typer.Typer(help="KDM Generator CLI - SMPTE-compliant Digital Cinema Key Delivery Message management")
@@ -60,9 +62,19 @@ def add_tenant(
     email: Optional[str] = typer.Option(None, "--email", "-e", help="Contact email"),
 ):
     """Add a new tenant/organization."""
-    typer.echo(f"Adding tenant: {label}")
-    # TODO: Implement with database
-    typer.secho("✅ Tenant added successfully", fg=typer.colors.GREEN)
+    dao = get_dao()
+    tenant = TenantRecord(
+        label=label,
+        description=description or "",
+        organization=organization or "",
+        contact_email=email or ""
+    )
+    try:
+        tenant_id = dao.create_tenant(tenant)
+        typer.secho(f"✅ Tenant '{label}' added with ID: {tenant_id}", fg=typer.colors.GREEN)
+    except Exception as e:
+        typer.secho(f"❌ Error adding tenant: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
 
 
 @tenant_app.command("remove")
@@ -71,9 +83,12 @@ def remove_tenant(
 ):
     """Remove a tenant by ID."""
     if typer.confirm(f"Are you sure you want to remove tenant {tenant_id}?"):
-        typer.echo(f"Removing tenant {tenant_id}...")
-        # TODO: Implement with database
-        typer.secho("✅ Tenant removed successfully", fg=typer.colors.GREEN)
+        dao = get_dao()
+        if dao.delete_tenant(tenant_id):
+            typer.secho(f"✅ Tenant {tenant_id} deactivated", fg=typer.colors.GREEN)
+        else:
+            typer.secho(f"❌ Failed to deactivate tenant {tenant_id}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
 
 
 @tenant_app.command("edit")
@@ -89,11 +104,22 @@ def edit_tenant(
 
 
 @tenant_app.command("list")
-def list_tenants():
+def list_tenants(
+    all: bool = typer.Option(False, "--all", "-a", help="Include inactive tenants"),
+):
     """List all tenants."""
-    typer.echo("Listing all tenants...")
-    # TODO: Implement with database
-    typer.echo("No tenants found.")
+    dao = get_dao()
+    tenants = dao.list_tenants(active_only=not all)
+
+    if not tenants:
+        typer.echo("No tenants found.")
+        return
+
+    typer.echo(f"\n{'ID':<4} {'Label':<20} {'Organization':<30} {'Active':<8}")
+    typer.echo("-" * 65)
+    for tenant in tenants:
+        active = "✅" if tenant.is_active else "❌"
+        typer.echo(f"{tenant.id:<4} {tenant.label:<20} {tenant.organization:<30} {active:<8}")
 
 
 # ============================================================================
