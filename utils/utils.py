@@ -3,16 +3,6 @@ import re
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509 import load_pem_x509_certificate
 
-
-def remove_ns(string_to_transform):
-    """
-    remove namespace from xml element such as "{customnamespace}XmlAttribute" will return only "XmlAttribute"
-    :param string_to_transform: 
-    :return: 
-    """
-    pattern = r'\{[^}]*\}'
-    return re.sub(pattern, '', string_to_transform)
-
 def get_current_path(curfile=__file__):
     _path = curfile.split('/')[:-1]
     _path = _path[:-1]

@@ -119,12 +119,11 @@ class KDMDatabase:
         ''')
 
     def _create_certificate_chains_table(self, cursor):
-        """Create certificate chains table (root > signer > device)."""
+        """Create certificate chains table (root > signer > device) - global, shared by all tenants."""
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS certificate_chains (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id INTEGER NOT NULL,
-                chain_name TEXT NOT NULL,
+                chain_name TEXT NOT NULL UNIQUE,
 
                 -- Certificate chain paths
                 root_cert_path TEXT NOT NULL,
@@ -132,9 +131,9 @@ class KDMDatabase:
                 device_cert_path TEXT NOT NULL,
 
                 -- Certificate chain PEM data
-                root_cert_pem TEXT,
-                signer_cert_pem TEXT,
-                device_cert_pem TEXT,
+                root_cert_pem TEXT NOT NULL,
+                signer_cert_pem TEXT NOT NULL,
+                device_cert_pem TEXT NOT NULL,
 
                 -- Private keys
                 root_key_path TEXT,
@@ -144,7 +143,7 @@ class KDMDatabase:
                 -- Chain metadata
                 root_thumbprint TEXT NOT NULL,
                 signer_thumbprint TEXT NOT NULL,
-                device_thumbprint TEXT NOT NULL,
+                device_thumbprint TEXT NOT NULL UNIQUE,
 
                 -- Chain validity (based on shortest cert validity)
                 chain_valid_from TIMESTAMP NOT NULL,
@@ -157,10 +156,7 @@ class KDMDatabase:
                 -- Metadata
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_active BOOLEAN DEFAULT 1,
-
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-                UNIQUE(tenant_id, chain_name)
+                is_active BOOLEAN DEFAULT 1
             )
         ''')
 
@@ -331,8 +327,9 @@ class KDMDatabase:
             "CREATE INDEX IF NOT EXISTS idx_self_certs_validity ON self_signed_certificates(not_valid_before, not_valid_after)",
             "CREATE INDEX IF NOT EXISTS idx_self_certs_active ON self_signed_certificates(is_active)",
 
-            # Certificate chains
-            "CREATE INDEX IF NOT EXISTS idx_cert_chains_tenant ON certificate_chains(tenant_id)",
+            # Certificate chains (global)
+            "CREATE INDEX IF NOT EXISTS idx_cert_chains_name ON certificate_chains(chain_name)",
+            "CREATE INDEX IF NOT EXISTS idx_cert_chains_thumbprint ON certificate_chains(device_thumbprint)",
             "CREATE INDEX IF NOT EXISTS idx_cert_chains_validity ON certificate_chains(chain_valid_from, chain_valid_until)",
             "CREATE INDEX IF NOT EXISTS idx_cert_chains_active ON certificate_chains(is_active)",
 

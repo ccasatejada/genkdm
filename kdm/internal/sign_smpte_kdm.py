@@ -89,7 +89,7 @@ def sign_smpte_kdm(kdm_file_path, output_file_path=None, signer_key_path=None, s
             encoding="UTF-8"
         ))
 
-    print(f"✅ SMPTE-compliant KDM signed: {output_file_path}")
+    print(f"SMPTE-compliant KDM signed: {output_file_path}")
     return str(output_file_path)
 
 
@@ -106,27 +106,27 @@ def _validate_kdm_structure(root):
     # Check root namespace
     expected_ns = "http://www.smpte-ra.org/schemas/430-3/2006/ETM"
     if root.nsmap.get(None) != expected_ns:
-        print(f"❌ Invalid root namespace. Expected {expected_ns}, got {root.nsmap.get(None)}")
+        print(f"Invalid root namespace. Expected {expected_ns}, got {root.nsmap.get(None)}")
         return False
 
     # Check for required ETM elements
     auth_public = root.find(".//{http://www.smpte-ra.org/schemas/430-3/2006/ETM}AuthenticatedPublic")
     if auth_public is None:
-        print("❌ Missing AuthenticatedPublic element")
+        print("Missing AuthenticatedPublic element")
         return False
 
     auth_private = root.find(".//{http://www.smpte-ra.org/schemas/430-3/2006/ETM}AuthenticatedPrivate")
     if auth_private is None:
-        print("❌ Missing AuthenticatedPrivate element")
+        print("Missing AuthenticatedPrivate element")
         return False
 
     # Check for KDM required extensions
     kdm_req_ext = root.find(".//{http://www.smpte-ra.org/schemas/430-1/2006/KDM}KDMRequiredExtensions")
     if kdm_req_ext is None:
-        print("❌ Missing KDMRequiredExtensions element")
+        print("Missing KDMRequiredExtensions element")
         return False
 
-    print("✅ KDM structure validated for SMPTE signing")
+    print("KDM structure validated for SMPTE signing")
     return True
 
 
@@ -190,11 +190,11 @@ def verify_smpte_signature(signed_kdm_path, ca_cert_path=None):
         else:
             verified_data = verifier.verify(signed_xml)
 
-        print("✅ KDM signature verification successful")
+        print("KDM signature verification successful")
         return True
 
     except Exception as e:
-        print(f"❌ KDM signature verification failed: {e}")
+        print(f"KDM signature verification failed: {e}")
         return False
 
 

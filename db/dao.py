@@ -23,6 +23,7 @@ from cryptography.hazmat.backends import default_backend
 from lxml import etree
 
 from db.schema import KDMDatabase, get_database
+from kdm.internal.dkdm_validator import DKDMValidator
 
 
 @dataclass
@@ -63,9 +64,8 @@ class SelfSignedCertificateRecord:
 
 @dataclass
 class CertificateChainRecord:
-    """Certificate chain data record."""
+    """Certificate chain data record (global, shared by all tenants)."""
     id: Optional[int] = None
-    tenant_id: int = 0
     chain_name: str = ""
     root_cert_path: str = ""
     signer_cert_path: str = ""
@@ -197,7 +197,7 @@ class KDMDataAccessObject:
 
             tenant_id = cursor.lastrowid
             conn.commit()
-            print(f"✅ Created tenant: {tenant.label} (ID: {tenant_id})")
+            print(f"Created tenant: {tenant.label} (ID: {tenant_id})")
             return tenant_id
 
     def get_tenant(self, tenant_id: int) -> Optional[TenantRecord]:
@@ -284,7 +284,7 @@ class KDMDataAccessObject:
 
             cert_id = cursor.lastrowid
             conn.commit()
-            print(f"✅ Created self-signed certificate: {cert.certificate_name} (ID: {cert_id})")
+            print(f"Created self-signed certificate: {cert.certificate_name} (ID: {cert_id})")
             return cert_id
 
     def import_certificate_from_file(self, cert_path: str, key_path: str, name: str) -> int:
@@ -413,12 +413,40 @@ class KDMDataAccessObject:
 
             cpl_id = cursor.lastrowid
             conn.commit()
-            print(f"✅ Created CPL: {cpl.content_title_text} (ID: {cpl_id})")
+            print(f"Created CPL: {cpl.content_title_text} (ID: {cpl_id})")
             return cpl_id
 
     # DKDM OPERATIONS
-    def import_dkdm_from_file(self, tenant_id: int, dkdm_file_path: str) -> int:
-        """Import DKDM from XML file and extract metadata."""
+    def import_dkdm_from_file(self, tenant_id: int, dkdm_file_path: str,
+                             cert_path: Optional[str] = None, key_path: Optional[str] = None,
+                             validate_cert: bool = True) -> int:
+        """
+        Import DKDM from XML file and extract metadata.
+
+        Args:
+            tenant_id: Tenant ID to associate DKDM with
+            dkdm_file_path: Path to DKDM XML file
+            cert_path: Path to self-signed certificate for validation (optional)
+            key_path: Path to private key for validation (optional)
+            validate_cert: Whether to validate DKDM against certificate (default True)
+
+        Returns:
+            DKDM ID
+
+        Raises:
+            ValueError: If CPL not found or validation fails
+        """
+        # Validate DKDM against self-signed certificate if provided
+        if validate_cert and cert_path and key_path:
+            print(f"Validating DKDM against certificate...")
+            validator = DKDMValidator(cert_path, key_path)
+            is_valid, message = validator.validate_dkdm(dkdm_file_path)
+
+            if not is_valid:
+                raise ValueError(f"DKDM validation failed: {message}")
+
+            print(f"{message}")
+
         # Parse DKDM XML
         with open(dkdm_file_path, 'rb') as f:
             xml_doc = etree.parse(f)
@@ -427,6 +455,7 @@ class KDMDataAccessObject:
         # Define namespaces
         etm_ns = 'http://www.smpte-ra.org/schemas/430-3/2006/ETM'
         kdm_ns = 'http://www.smpte-ra.org/schemas/430-1/2006/KDM'
+        dsig_ns = 'http://www.w3.org/2000/09/xmldsig#'
 
         # Extract DKDM metadata
         message_id = root.findtext(f'.//{{{etm_ns}}}MessageId', '')
@@ -446,6 +475,31 @@ class KDMDataAccessObject:
 
         not_before = datetime.fromisoformat(not_before_str.replace('Z', '+00:00')) if not_before_str else datetime.now(timezone.utc)
         not_after = datetime.fromisoformat(not_after_str.replace('Z', '+00:00')) if not_after_str else datetime.now(timezone.utc)
+
+        # Extract recipient information
+        recipient_issuer_name = ''
+        recipient_serial_number = ''
+        recipient_subject_name = ''
+        device_thumbprints = []
+
+        # Extract from Recipient element
+        recipient_elem = root.find(f'.//{{{etm_ns}}}RequiredExtensions//{{{kdm_ns}}}Recipient', namespaces=None)
+        if recipient_elem is not None:
+            issuer_serial = recipient_elem.find(f'.//{{{dsig_ns}}}X509IssuerSerial', namespaces=None)
+            if issuer_serial is not None:
+                recipient_issuer_name = issuer_serial.findtext(f'.//{{{dsig_ns}}}X509IssuerName', '', namespaces=None).strip()
+                recipient_serial_number = issuer_serial.findtext(f'.//{{{dsig_ns}}}X509SerialNumber', '', namespaces=None).strip()
+            recipient_subject_name = recipient_elem.findtext(f'.//{{{dsig_ns}}}X509SubjectName', '', namespaces=None) or ''
+            recipient_subject_name = recipient_subject_name.strip()
+
+        # Extract device thumbprints from AuthorizedDeviceInfo
+        device_list = root.findall(f'.//{{{kdm_ns}}}AuthorizedDeviceInfo//{{{kdm_ns}}}DeviceList//{{{kdm_ns}}}CertificateThumbprint', namespaces=None)
+        for thumbprint_elem in device_list:
+            if thumbprint_elem.text:
+                device_thumbprints.append(thumbprint_elem.text.strip())
+
+        # Extract device list identifier
+        device_list_id = root.findtext(f'.//{{{kdm_ns}}}AuthorizedDeviceInfo//{{{kdm_ns}}}DeviceListIdentifier', '', namespaces=None).strip()
 
         # Extract key IDs
         key_ids = []
@@ -474,6 +528,11 @@ class KDMDataAccessObject:
             content_keys_not_valid_before=not_before,
             content_keys_not_valid_after=not_after,
             issue_date=issue_date,
+            recipient_issuer_name=recipient_issuer_name,
+            recipient_serial_number=recipient_serial_number,
+            recipient_subject_name=recipient_subject_name,
+            device_list_identifier=device_list_id,
+            device_thumbprints_json=json.dumps(device_thumbprints),
             key_ids_json=json.dumps(key_ids)
         )
 
@@ -504,7 +563,7 @@ class KDMDataAccessObject:
 
             dkdm_id = cursor.lastrowid
             conn.commit()
-            print(f"✅ Created DKDM: {dkdm.content_title_text} (ID: {dkdm_id})")
+            print(f"Created DKDM: {dkdm.content_title_text} (ID: {dkdm_id})")
             return dkdm_id
 
     def get_cpl_by_uuid(self, cpl_uuid: str) -> Optional[CPLRecord]:
@@ -517,6 +576,173 @@ class KDMDataAccessObject:
             if row:
                 return CPLRecord(**dict(row))
             return None
+
+    def get_dkdm_by_id(self, dkdm_id: int) -> Optional[DKDMRecord]:
+        """Get DKDM by ID."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM dkdm WHERE id = ? AND is_active = 1', (dkdm_id,))
+            row = cursor.fetchone()
+
+            if row:
+                return DKDMRecord(**dict(row))
+            return None
+
+    # CERTIFICATE CHAIN OPERATIONS
+    def import_certificate_chain_from_files(self, chain_name: str,
+                                           root_cert_path: str, signer_cert_path: str,
+                                           device_cert_path: str) -> int:
+        """
+        Import certificate chain from PEM files (Barco, Dolby, Doremi, etc.).
+
+        Certificate chains are global and can be used by all tenants.
+
+        Args:
+            chain_name: Descriptive name for the chain (e.g., "Barco Projector 1")
+            root_cert_path: Path to root certificate
+            signer_cert_path: Path to signer/intermediate certificate
+            device_cert_path: Path to device/leaf certificate
+
+        Returns:
+            Certificate chain ID
+        """
+        import hashlib
+        import base64
+        from cryptography.hazmat.primitives.serialization import Encoding
+
+        # Read and parse all certificates
+        with open(root_cert_path, 'rb') as f:
+            root_pem = f.read().decode('utf-8')
+        root_cert = x509.load_pem_x509_certificate(root_pem.encode(), default_backend())
+
+        with open(signer_cert_path, 'rb') as f:
+            signer_pem = f.read().decode('utf-8')
+        signer_cert = x509.load_pem_x509_certificate(signer_pem.encode(), default_backend())
+
+        with open(device_cert_path, 'rb') as f:
+            device_pem = f.read().decode('utf-8')
+        device_cert = x509.load_pem_x509_certificate(device_pem.encode(), default_backend())
+
+        # Calculate thumbprints
+        def get_thumbprint(cert):
+            der_bytes = cert.public_bytes(encoding=Encoding.DER)
+            return base64.b64encode(hashlib.sha1(der_bytes).digest()).decode()
+
+        root_thumbprint = get_thumbprint(root_cert)
+        signer_thumbprint = get_thumbprint(signer_cert)
+        device_thumbprint = get_thumbprint(device_cert)
+
+        # Get validity period (shortest validity in chain)
+        chain_valid_from = max(
+            root_cert.not_valid_before_utc,
+            signer_cert.not_valid_before_utc,
+            device_cert.not_valid_before_utc
+        ).replace(tzinfo=None)
+
+        chain_valid_until = min(
+            root_cert.not_valid_after_utc,
+            signer_cert.not_valid_after_utc,
+            device_cert.not_valid_after_utc
+        ).replace(tzinfo=None)
+
+        # Create certificate chain record
+        chain_record = CertificateChainRecord(
+            chain_name=chain_name,
+            root_cert_path=root_cert_path,
+            signer_cert_path=signer_cert_path,
+            device_cert_path=device_cert_path,
+            root_cert_pem=root_pem,
+            signer_cert_pem=signer_pem,
+            device_cert_pem=device_pem,
+            root_thumbprint=root_thumbprint,
+            signer_thumbprint=signer_thumbprint,
+            device_thumbprint=device_thumbprint,
+            chain_valid_from=chain_valid_from,
+            chain_valid_until=chain_valid_until,
+            is_smpte_compliant=True
+        )
+
+        return self.create_certificate_chain(chain_record)
+
+    def create_certificate_chain(self, chain: CertificateChainRecord) -> int:
+        """Create a new certificate chain record (global, shared by all tenants)."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO certificate_chains (
+                    chain_name, root_cert_path, signer_cert_path, device_cert_path,
+                    root_cert_pem, signer_cert_pem, device_cert_pem,
+                    root_key_path, signer_key_path, device_key_path,
+                    root_thumbprint, signer_thumbprint, device_thumbprint,
+                    chain_valid_from, chain_valid_until, is_smpte_compliant, smpte_role
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                chain.chain_name, chain.root_cert_path, chain.signer_cert_path,
+                chain.device_cert_path, chain.root_cert_pem, chain.signer_cert_pem, chain.device_cert_pem,
+                chain.root_key_path, chain.signer_key_path, chain.device_key_path,
+                chain.root_thumbprint, chain.signer_thumbprint, chain.device_thumbprint,
+                chain.chain_valid_from, chain.chain_valid_until, chain.is_smpte_compliant, chain.smpte_role
+            ))
+
+            chain_id = cursor.lastrowid
+            conn.commit()
+            print(f"Created certificate chain: {chain.chain_name} (ID: {chain_id})")
+            return chain_id
+
+    def get_certificate_chain(self, chain_id: int) -> Optional[CertificateChainRecord]:
+        """Get certificate chain by ID."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM certificate_chains WHERE id = ? AND is_active = 1', (chain_id,))
+            row = cursor.fetchone()
+
+            if row:
+                return CertificateChainRecord(**dict(row))
+            return None
+
+    def list_certificate_chains(self, tenant_id: Optional[int] = None, active_only: bool = True) -> List[CertificateChainRecord]:
+        """List certificate chains, optionally filtered by tenant."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            where_clauses = []
+            params = []
+
+            if tenant_id is not None:
+                where_clauses.append("tenant_id = ?")
+                params.append(tenant_id)
+
+            if active_only:
+                where_clauses.append("is_active = 1")
+
+            where_clause = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+            cursor.execute(f'SELECT * FROM certificate_chains {where_clause} ORDER BY chain_name', params)
+            rows = cursor.fetchall()
+
+            return [CertificateChainRecord(**dict(row)) for row in rows]
+
+    # TENANT AUTHORIZATION HELPERS
+    def verify_tenant_owns_cpl(self, tenant_id: int, cpl_id: int) -> bool:
+        """Verify that a CPL belongs to a tenant."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM cpl WHERE id = ? AND tenant_id = ? AND is_active = 1', (cpl_id, tenant_id))
+            return cursor.fetchone() is not None
+
+    def verify_tenant_owns_dkdm(self, tenant_id: int, dkdm_id: int) -> bool:
+        """Verify that a DKDM belongs to a tenant."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM dkdm WHERE id = ? AND tenant_id = ? AND is_active = 1', (dkdm_id, tenant_id))
+            return cursor.fetchone() is not None
+
+    def verify_tenant_owns_certificate_chain(self, tenant_id: int, chain_id: int) -> bool:
+        """Verify that a certificate chain belongs to a tenant."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM certificate_chains WHERE id = ? AND tenant_id = ? AND is_active = 1', (chain_id, tenant_id))
+            return cursor.fetchone() is not None
 
     # KDM GENERATED OPERATIONS
     def create_kdm_generated(self, kdm: KDMGeneratedRecord) -> int:
@@ -546,7 +772,7 @@ class KDMDataAccessObject:
 
             kdm_id = cursor.lastrowid
             conn.commit()
-            print(f"✅ Created generated KDM: {kdm.content_title_text} (ID: {kdm_id})")
+            print(f"Created generated KDM: {kdm.content_title_text} (ID: {kdm_id})")
             return kdm_id
 
     # UTILITY OPERATIONS
