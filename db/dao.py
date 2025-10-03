@@ -700,24 +700,14 @@ class KDMDataAccessObject:
                 return CertificateChainRecord(**dict(row))
             return None
 
-    def list_certificate_chains(self, tenant_id: Optional[int] = None, active_only: bool = True) -> List[CertificateChainRecord]:
-        """List certificate chains, optionally filtered by tenant."""
+    def list_certificate_chains(self, active_only: bool = True) -> List[CertificateChainRecord]:
+        """List all certificate chains (global, shared by all tenants)."""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
 
-            where_clauses = []
-            params = []
+            where_clause = "WHERE is_active = 1" if active_only else ""
 
-            if tenant_id is not None:
-                where_clauses.append("tenant_id = ?")
-                params.append(tenant_id)
-
-            if active_only:
-                where_clauses.append("is_active = 1")
-
-            where_clause = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-
-            cursor.execute(f'SELECT * FROM certificate_chains {where_clause} ORDER BY chain_name', params)
+            cursor.execute(f'SELECT * FROM certificate_chains {where_clause} ORDER BY chain_name')
             rows = cursor.fetchall()
 
             return [CertificateChainRecord(**dict(row)) for row in rows]
@@ -735,13 +725,6 @@ class KDMDataAccessObject:
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT id FROM dkdm WHERE id = ? AND tenant_id = ? AND is_active = 1', (dkdm_id, tenant_id))
-            return cursor.fetchone() is not None
-
-    def verify_tenant_owns_certificate_chain(self, tenant_id: int, chain_id: int) -> bool:
-        """Verify that a certificate chain belongs to a tenant."""
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT id FROM certificate_chains WHERE id = ? AND tenant_id = ? AND is_active = 1', (chain_id, tenant_id))
             return cursor.fetchone() is not None
 
     # KDM GENERATED OPERATIONS

@@ -514,17 +514,19 @@ class TestKDMGeneratedOperations:
         )
         dkdm_id = test_dao.create_dkdm(dkdm)
 
-        # Create certificate chain (simplified - just insert directly)
+        # Create certificate chain (global - no tenant_id)
         with test_dao.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO certificate_chains (
-                    tenant_id, chain_name, root_cert_path, signer_cert_path,
-                    device_cert_path, root_thumbprint, signer_thumbprint,
+                    chain_name, root_cert_path, signer_cert_path,
+                    device_cert_path, root_cert_pem, signer_cert_pem, device_cert_pem,
+                    root_thumbprint, signer_thumbprint,
                     device_thumbprint, chain_valid_from, chain_valid_until
-                ) VALUES (?, 'TestChain', '/r', '/s', '/d', 't1', 't2', 't3',
+                ) VALUES ('TestChain', '/r', '/s', '/d', 'pem1', 'pem2', 'pem3',
+                          't1', 't2', 't3',
                           '2025-01-01', '2026-01-01')
-            ''', (tenant_id,))
+            ''')
             cert_chain_id = cursor.lastrowid
             conn.commit()
 

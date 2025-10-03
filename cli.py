@@ -130,31 +130,34 @@ def list_tenants(
 
 @cert_app.command("add")
 def add_certificate(
-    tenant_id: int = typer.Option(..., "--tenant", "-t", help="Tenant ID"),
     name: str = typer.Option(..., "--name", "-n", help="Certificate chain name (e.g., 'Barco Projector 1')"),
     root: Path = typer.Option(..., "--root", "-r", help="Path to root certificate"),
     signer: Path = typer.Option(..., "--signer", "-s", help="Path to signer/intermediate certificate"),
     device: Path = typer.Option(..., "--device", "-d", help="Path to device/leaf certificate"),
 ):
-    """Add a target device certificate chain for a tenant (Barco, Dolby, Doremi, etc.)."""
+    """
+    Add a target device certificate chain (Barco, Dolby, Doremi, etc.).
+
+    Certificate chains are global and can be used by all tenants to generate KDMs.
+    """
     # Validate all certificate files exist
     for cert_name, cert_path in [("Root", root), ("Signer", signer), ("Device", device)]:
         if not cert_path.exists():
             typer.secho(f"{cert_name} certificate file not found: {cert_path}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1)
 
-    typer.echo(f"Adding certificate chain '{name}' for tenant {tenant_id}...")
+    typer.echo(f"Adding global certificate chain '{name}'...")
 
     dao = get_dao()
     try:
         chain_id = dao.import_certificate_chain_from_files(
-            tenant_id=tenant_id,
             chain_name=name,
             root_cert_path=str(root),
             signer_cert_path=str(signer),
             device_cert_path=str(device)
         )
         typer.secho(f"Certificate chain added successfully (ID: {chain_id})", fg=typer.colors.GREEN)
+        typer.echo(f"This certificate can now be used by any tenant for KDM generation.")
     except Exception as e:
         typer.secho(f"Error adding certificate chain: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)

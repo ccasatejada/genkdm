@@ -117,14 +117,10 @@ class KDMGenerationService:
         )
         log.info(f"Decrypted content keys with self-signed certificate")
 
-        # Step 6: Verify all certificate chains belong to tenant
+        # Step 6: Generate KDMs for all certificate chains (global, shared by all tenants)
         generated_kdm_ids = []
 
         for chain_id in certificate_chain_ids:
-            if not self.dao.verify_tenant_owns_certificate_chain(tenant_id, chain_id):
-                log.warning(f"Skipping chain {chain_id}: not owned by tenant {tenant_id}")
-                continue
-
             # Step 7: Generate KDM for this certificate chain
             try:
                 kdm_id = self._generate_kdm_for_target(

@@ -82,19 +82,34 @@ class TestForeignKeyConstraints:
             result = cursor.fetchone()[0]
             assert result == 1, "Foreign keys are not enabled"
 
-    def test_foreign_key_constraint_on_certificate_chains(self, test_db):
-        """Test that certificate_chains requires valid tenant_id."""
+    def test_certificate_chains_unique_constraints(self, test_db):
+        """Test that certificate_chains enforces unique chain_name and device_thumbprint."""
         with test_db.get_connection() as conn:
             cursor = conn.cursor()
 
-            # Try to insert certificate chain with invalid tenant_id
+            # Insert first chain
+            cursor.execute('''
+                INSERT INTO certificate_chains (
+                    chain_name, root_cert_path, signer_cert_path,
+                    device_cert_path, root_cert_pem, signer_cert_pem, device_cert_pem,
+                    root_thumbprint, signer_thumbprint,
+                    device_thumbprint, chain_valid_from, chain_valid_until
+                ) VALUES ('Barco1', 'path1', 'path2', 'path3', 'pem1', 'pem2', 'pem3',
+                          'thumb1', 'thumb2', 'thumb3_unique',
+                          '2025-01-01', '2026-01-01')
+            ''')
+            conn.commit()
+
+            # Try to insert duplicate chain_name
             with pytest.raises(sqlite3.IntegrityError):
                 cursor.execute('''
                     INSERT INTO certificate_chains (
-                        tenant_id, chain_name, root_cert_path, signer_cert_path,
-                        device_cert_path, root_thumbprint, signer_thumbprint,
+                        chain_name, root_cert_path, signer_cert_path,
+                        device_cert_path, root_cert_pem, signer_cert_pem, device_cert_pem,
+                        root_thumbprint, signer_thumbprint,
                         device_thumbprint, chain_valid_from, chain_valid_until
-                    ) VALUES (9999, 'test', 'path1', 'path2', 'path3', 'thumb1', 'thumb2', 'thumb3',
+                    ) VALUES ('Barco1', 'path4', 'path5', 'path6', 'pem4', 'pem5', 'pem6',
+                              'thumb4', 'thumb5', 'thumb6_unique',
                               '2025-01-01', '2026-01-01')
                 ''')
                 conn.commit()
